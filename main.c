@@ -1,21 +1,23 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-#include <ctype.h>
+#include <wctype.h>
+#include <wchar.h>
+#include <locale.h>
 
 #define MAX_WORD_SIZE 30
-#define MAX_UNIQUE_WORDS 10000  // A limit for unique words
+#define MAX_UNIQUE_WORDS 10000
 
-// Check if a character is a vowel
-bool is_vowel(char c) {
-    c = tolower(c);
-    return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u';
+// check if a character is a vowel
+bool is_vowel(wchar_t c) {
+    c = towlower(c);
+    return wcschr(L"aeiouаеиіїоуюя", c) != NULL; // English and Ukrainian vowels
 }
 
-// Process a word to check if it has more vowels than consonants
-bool has_more_vowels(const char *word) {
+// check if it has more vowels than consonants
+bool has_more_vowels(const wchar_t *word) {
     int vowel_count = 0, consonant_count = 0;
-    for (int i = 0; word[i] != '\0'; i++) {
+    for (int i = 0; word[i] != L'\0'; i++) {
         if (is_vowel(word[i])) {
             vowel_count++;
         } else {
@@ -26,81 +28,108 @@ bool has_more_vowels(const char *word) {
 }
 
 // Check if a word is in the unique words array
-bool is_word_unique(const char *word, const char unique_words[MAX_UNIQUE_WORDS][MAX_WORD_SIZE + 1], int count) {
+bool is_word_unique(const wchar_t *word, const wchar_t unique_words[MAX_UNIQUE_WORDS][MAX_WORD_SIZE + 1], int count) {
     for (int i = 0; i < count; i++) {
-        if (strcmp(word, unique_words[i]) == 0) {
+        if (wcscmp(word, unique_words[i]) == 0) {
             return false;
         }
     }
     return true;
 }
 
+void process_word(wchar_t *word, wchar_t unique_words[MAX_UNIQUE_WORDS][MAX_WORD_SIZE + 1], int *unique_count, FILE *outputFile) {
+    if (is_word_unique(word, unique_words, *unique_count) && has_more_vowels(word)) {
+        wprintf(L"%ls\n", word);
+        if (outputFile) {
+            fwprintf(outputFile, L"%ls\n", word);
+            fflush(outputFile);
+        }
+        wcscpy(unique_words[*unique_count], word);
+        (*unique_count)++;
+        if (*unique_count >= MAX_UNIQUE_WORDS) {
+            fwprintf(stderr, L"Reached maximum unique words limit. Exiting...\n");
+            exit(1);
+        }
+    }
+}
+
+
 int main() {
-    char filepath[256];
-    char outputPath[256];
-    char choice;
+    system("chcp 65001");
+    setlocale(LC_ALL, "Ukrainian");
+
+    wchar_t filepath[256];
+    wchar_t outputPath[256];
+    wchar_t choice;
     FILE *outputFile = NULL;
 
-    printf("Enter the path to the input file: ");
-    scanf("%255s", filepath);
+    wprintf(L"Enter the path to the input file: ");
+    wscanf(L"%255ls", filepath);
 
-    printf("Do you want to save output to a file? (y/n): ");
-    scanf(" %c", &choice);
+    wprintf(L"Do you want to save output to a file? (y/n): ");
+    wscanf(L" %lc", &choice);
 
-    if (choice == 'y' || choice == 'Y') {
-        printf("Enter the path to the output file: ");
-        scanf("%255s", outputPath);
-        outputFile = fopen(outputPath, "w");
+    if (choice == L'y' || choice == L'Y') {
+        wprintf(L"Enter the path to the output file: ");
+        wscanf(L"%255ls", outputPath);
+        outputFile = _wfopen(outputPath, L"w,ccs=UTF-8");
         if (!outputFile) {
             perror("Error creating output file");
             return 1;
         }
     }
 
-    FILE *file = fopen(filepath, "r");
+
+    FILE *file = _wfopen(filepath, L"r,ccs=UTF-8");
     if (!file) {
         perror("Error opening input file");
         return 1;
     }
 
-    char word[MAX_WORD_SIZE + 1];
-    char unique_words[MAX_UNIQUE_WORDS][MAX_WORD_SIZE + 1];
+    wchar_t word[MAX_WORD_SIZE + 1];
+    wchar_t unique_words[MAX_UNIQUE_WORDS][MAX_WORD_SIZE + 1];
     int unique_count = 0;
     int word_len = 0;
-    char ch;
+    wchar_t ch;
 
-    while ((ch = fgetc(file)) != EOF) {
-        if (isalpha(ch)) {
+    wchar_t peek;
+
+    while ((ch = fgetwc(file)) != WEOF) {
+        if (iswalpha(ch)) {
             if (word_len < MAX_WORD_SIZE) {
                 word[word_len++] = ch;
             }
-        } else {
-            if (word_len > 0) {
-                word[word_len] = '\0';
-
-                if (is_word_unique(word, unique_words, unique_count) && has_more_vowels(word)) {
-                    printf("%s\n", word);
-                    if (outputFile) {
-                        fprintf(outputFile, "%s\n", word);
-                    }
-                    strcpy(unique_words[unique_count++], word);
-                    if (unique_count >= MAX_UNIQUE_WORDS) {
-                        fprintf(stderr, "Reached maximum unique words limit. Exiting...\n");
-                        break;
-                    }
+        } else if (ch == L'\'' && word_len > 0) {
+            peek = fgetwc(file);
+            if (peek != WEOF && iswalpha(peek)) {
+                if (word_len < MAX_WORD_SIZE) {
+                    word[word_len++] = ch;
                 }
-
+                ungetwc(peek, file);
+            } else {
+            // End of word reached, process the word
+                word[word_len] = L'\0';
+                process_word(word, unique_words, &unique_count, outputFile);
+                word_len = 0;
+            }
+        } else {
+        // End of word reached, process the word
+            if (word_len > 0) {
+                word[word_len] = L'\0';
+                process_word(word, unique_words, &unique_count, outputFile);
                 word_len = 0;
             }
         }
     }
 
+
+
     if (word_len > 0) {
-        word[word_len] = '\0';
+        word[word_len] = L'\0';
         if (is_word_unique(word, unique_words, unique_count) && has_more_vowels(word)) {
-            printf("%s\n", word);
+            wprintf(L"%ls\n", word);
             if (outputFile) {
-                fprintf(outputFile, "%s\n", word);
+                fwprintf(outputFile, L"%ls\n", word);
             }
         }
     }

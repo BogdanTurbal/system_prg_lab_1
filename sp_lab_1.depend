@@ -1,7 +1,9 @@
 # depslib dependency file v1.0
-1695571213 source:c:\users\bogdan\desktop\unik_labs\sp_lab_1\main.c
+1695623212 source:c:\users\bogdan\desktop\unik_labs\sp_lab_1\main.c
 	<stdio.h>
 	<string.h>
 	<stdbool.h>
-	<ctype.h>
+	<wctype.h>
+	<wchar.h>
+	<locale.h>
 
